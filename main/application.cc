@@ -549,6 +549,8 @@ void Application::Start() {
 #endif
                 Schedule([this, packet = std::move(packet)]() {
                     protocol_->SendAudio(packet);
+                    // ESP_LOGI(TAG, "Send %zu bytes, timestamp %lu, last_ts %lu, qsize %zu",
+                    //     packet.payload.size(), packet.timestamp, last_output_timestamp_value, timestamp_queue_.size());
                 });
             });
         });

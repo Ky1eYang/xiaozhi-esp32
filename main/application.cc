@@ -449,13 +449,14 @@ void Application::Start() {
                 Schedule([this]() {
                     aborted_ = false;
                     if (device_state_ == kDeviceStateIdle || device_state_ == kDeviceStateListening) {
+                        background_task_->WaitForCompletion();
                         SetDeviceState(kDeviceStateSpeaking);
                     }
                 });
             } else if (strcmp(state->valuestring, "stop") == 0) {
                 Schedule([this]() {
-                    background_task_->WaitForCompletion();
                     if (device_state_ == kDeviceStateSpeaking) {
+                        background_task_->WaitForCompletion();
                         if (listening_mode_ == kListeningModeManualStop) {
                             SetDeviceState(kDeviceStateIdle);
                         } else {
@@ -532,24 +533,27 @@ void Application::Start() {
                 AudioStreamPacket packet;
                 packet.payload = std::move(opus);
 #ifdef CONFIG_USE_SERVER_AEC
-                {
-                    std::lock_guard<std::mutex> lock(timestamp_mutex_);
-                    if (!timestamp_queue_.empty()) {
-                        packet.timestamp = timestamp_queue_.front();
-                        timestamp_queue_.pop_front();
-                    } else {
-                        packet.timestamp = 0;
-                    }
-
-                    if (timestamp_queue_.size() > 3) { // 限制队列长度3
+                if (timestamp_queue_.size() > 3) { // 限制队列长度3
                         timestamp_queue_.pop_front(); // 该包发送前先出队保持队列长度
                         return;
-                    }
                 }
-#endif
+                uint32_t last_output_timestamp_value = last_output_timestamp_.load();
+                if (!timestamp_queue_.empty()) {
+                    packet.timestamp = timestamp_queue_.front();
+                    timestamp_queue_.pop_front();
+                } else { // 空的情况
+                    packet.timestamp = 0;
+                }
+                background_task_->Schedule([this, last_output_timestamp_value, packet = std::move(packet)]() {
+                    protocol_->SendAudio(packet);
+                    ESP_LOGI(TAG, "Send %zu bytes, timestamp %lu, last_ts %lu, qsize %zu",
+                        packet.payload.size(), packet.timestamp, last_output_timestamp_value, timestamp_queue_.size());
+                });
+#else
                 Schedule([this, packet = std::move(packet)]() {
                     protocol_->SendAudio(packet);
                 });
+#endif
             });
         });
     });
@@ -732,7 +736,6 @@ void Application::OnAudioOutput() {
         }
         codec->OutputData(pcm);
 #ifdef CONFIG_USE_SERVER_AEC
-            std::lock_guard<std::mutex> lock(timestamp_mutex_);
             timestamp_queue_.push_back(packet.timestamp);
             last_output_timestamp_ = packet.timestamp;
 #endif

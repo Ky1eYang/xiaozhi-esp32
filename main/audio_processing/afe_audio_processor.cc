@@ -108,10 +108,10 @@ void AfeAudioProcessor::AudioProcessorTask() {
         feed_size, fetch_size);
 
     while (true) {
-        xEventGroupWaitBits(event_group_, PROCESSOR_RUNNING, pdFALSE, pdTRUE, portMAX_DELAY);
+        xEventGroupWaitBits(event_group_, PROCESSOR_RUNNING, pdFALSE, pdTRUE, portMAX_DELAY); // 此处堵塞, 等待PROCESSOR_RUNNING事件
 
-        auto res = afe_iface_->fetch_with_delay(afe_data_, portMAX_DELAY);
-        if ((xEventGroupGetBits(event_group_) & PROCESSOR_RUNNING) == 0) {
+        auto res = afe_iface_->fetch_with_delay(afe_data_, portMAX_DELAY); // afe_fetch_result_t
+        if ((xEventGroupGetBits(event_group_) & PROCESSOR_RUNNING) == 0) { // 如果eventgroup为0, continue, 进下个迭代等待重启
             continue;
         }
         if (res == nullptr || res->ret_value == ESP_FAIL) {
@@ -133,6 +133,7 @@ void AfeAudioProcessor::AudioProcessorTask() {
         }
 
         if (output_callback_) {
+            // vector传入的是指针首位和指针末尾            
             output_callback_(std::vector<int16_t>(res->data, res->data + res->data_size / sizeof(int16_t)));
         }
     }

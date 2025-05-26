@@ -199,7 +199,9 @@ void BoxAudioCodec::EnableInput(bool enable) {
             fs.channel_mask |= ESP_CODEC_DEV_MAKE_CHANNEL_MASK(1);
         }
         ESP_ERROR_CHECK(esp_codec_dev_open(input_dev_, &fs));
-        ESP_ERROR_CHECK(esp_codec_dev_set_in_channel_gain(input_dev_, ESP_CODEC_DEV_MAKE_CHANNEL_MASK(0), 40.0));
+        static float input_gain = 20.0; // Default gain for input channel 0
+        ESP_ERROR_CHECK(esp_codec_dev_set_in_channel_gain(input_dev_, ESP_CODEC_DEV_MAKE_CHANNEL_MASK(0), input_gain));
+        ESP_LOGW(TAG, "Input gain set to %.1f dB", input_gain);
     } else {
         ESP_ERROR_CHECK(esp_codec_dev_close(input_dev_));
     }

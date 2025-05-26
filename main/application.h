@@ -27,9 +27,7 @@
 #endif
 
 #define SCHEDULE_EVENT (1 << 0)
-#define AUDIO_INPUT_READY_EVENT (1 << 1)
-#define AUDIO_OUTPUT_READY_EVENT (1 << 2)
-#define CHECK_NEW_VERSION_DONE_EVENT (1 << 3)
+#define CHECK_NEW_VERSION_DONE_EVENT (1 << 2)
 
 enum DeviceState {
     kDeviceStateUnknown,
@@ -45,6 +43,7 @@ enum DeviceState {
 };
 
 #define OPUS_FRAME_DURATION_MS 60
+#define MAX_AUDIO_PACKETS_IN_QUEUE (2400 / OPUS_FRAME_DURATION_MS)
 
 class Application {
 public:
@@ -72,6 +71,7 @@ public:
     void WakeWordInvoke(const std::string& wake_word);
     void PlaySound(const std::string_view& sound);
     bool CanEnterSleepMode();
+    void SendMcpMessage(const std::string& payload);
 
 private:
     Application();

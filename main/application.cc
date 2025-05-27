@@ -418,7 +418,6 @@ void Application::Start() {
         Alert(Lang::Strings::ERROR, message.c_str(), "sad", Lang::Sounds::P3_EXCLAMATION);
     });
     protocol_->OnIncomingAudio([this](AudioStreamPacket&& packet) { // 获取tts数据包
-        const int max_packets_in_queue = 600 / OPUS_FRAME_DURATION_MS;
         std::lock_guard<std::mutex> lock(mutex_);
         if (audio_decode_queue_.size() < MAX_AUDIO_PACKETS_IN_QUEUE) {
             audio_decode_queue_.emplace_back(std::move(packet));
@@ -573,8 +572,8 @@ void Application::Start() {
                 }
                 background_task_->Schedule([this, last_output_timestamp_value, packet = std::move(packet)]() {
                     protocol_->SendAudio(packet);
-                    ESP_LOGI(TAG, "Send %zu bytes, timestamp %lu, last_ts %lu, tqsize %zu, aqsize %zu",
-                        packet.payload.size(), packet.timestamp, last_output_timestamp_value, timestamp_queue_.size(), audio_decode_queue_.size());
+                    // ESP_LOGI(TAG, "Send %zu bytes, timestamp %lu, last_ts %lu, tqsize %zu, aqsize %zu",
+                    //     packet.payload.size(), packet.timestamp, last_output_timestamp_value, timestamp_queue_.size(), audio_decode_queue_.size());
                 });
 #else
                 Schedule([this, packet = std::move(packet)]() {

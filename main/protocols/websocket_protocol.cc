@@ -158,6 +158,12 @@ bool WebsocketProtocol::OpenAudioChannel() {
             } else {
                 ESP_LOGE(TAG, "Missing message type, data: %s", data);
             }
+            // Log the received message: root
+            char* message = cJSON_PrintUnformatted(root);
+            if (message != nullptr) {
+                ESP_LOGI(TAG, "Received message: %s", message);
+                cJSON_free(message);
+            }
             cJSON_Delete(root);
         }
         last_incoming_time_ = std::chrono::steady_clock::now();

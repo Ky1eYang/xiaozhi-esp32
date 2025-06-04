@@ -549,19 +549,17 @@ void Application::Start() {
                 AudioStreamPacket packet;
                 packet.payload = std::move(opus);
 #ifdef CONFIG_USE_SERVER_AEC
-                {
-                    std::lock_guard<std::mutex> lock(timestamp_mutex_);
-                    if (!timestamp_queue_.empty()) {
-                        packet.timestamp = timestamp_queue_.front();
-                        timestamp_queue_.pop_front();
-                    } else {
-                        packet.timestamp = 0;
-                    }
 
-                    if (timestamp_queue_.size() > 3) { // 限制队列长度3
-                        timestamp_queue_.pop_front(); // 该包发送前先出队保持队列长度
-                        return;
-                    }
+                if (timestamp_queue_.size() > 3) { // 限制队列长度3
+                    timestamp_queue_.pop_front(); // 该包发送前先出队保持队列长度
+                    return;
+                }
+                
+                if (!timestamp_queue_.empty()) {
+                    packet.timestamp = timestamp_queue_.front();
+                    timestamp_queue_.pop_front();
+                } else {
+                    packet.timestamp = 0;
                 }
 #endif
                 std::lock_guard<std::mutex> lock(mutex_);

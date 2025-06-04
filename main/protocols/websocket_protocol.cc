@@ -70,6 +70,7 @@ bool WebsocketProtocol::SendText(const std::string& text) {
         SetError(Lang::Strings::SERVER_ERROR);
         return false;
     }
+    ESP_LOGI(TAG, ">> %s", text.c_str()); // 协议日志
 
     return true;
 }
@@ -161,7 +162,7 @@ bool WebsocketProtocol::OpenAudioChannel() {
             // Log the received message: root
             char* message = cJSON_PrintUnformatted(root);
             if (message != nullptr) {
-                ESP_LOGI(TAG, "Received message: %s", message);
+                ESP_LOGI(TAG, "<< %s", message); // 协议日志
                 cJSON_free(message);
             }
             cJSON_Delete(root);

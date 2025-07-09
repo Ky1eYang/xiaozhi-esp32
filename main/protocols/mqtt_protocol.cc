@@ -95,7 +95,7 @@ bool MqttProtocol::StartMqttClient(bool report_error) {
                 if (strcmp(command->valuestring, "reboot") == 0) {
                     esp_restart();
                 } else if (strcmp(command->valuestring, "lazy_reboot") == 0) {
-                    if (udp_ != nullptr) {
+                    if (udp_ == nullptr) {
                         esp_restart();
                     }
                     reboot_after_goodbye_ = true;

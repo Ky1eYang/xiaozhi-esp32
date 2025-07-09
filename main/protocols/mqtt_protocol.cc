@@ -84,13 +84,32 @@ bool MqttProtocol::StartMqttClient(bool report_error) {
                     CloseAudioChannel();
                 });
             }
+            if (reboot_after_goodbye_) {
+                ESP_LOGI(TAG, "Rebooting after goodbye");
+                esp_restart();
+            }
+        } else if (strcmp(type->valuestring, "system") == 0) {
+            auto command = cJSON_GetObjectItem(root, "command");
+            if (cJSON_IsString(command)) {
+                ESP_LOGI(TAG, "System command: %s", command->valuestring);
+                if (strcmp(command->valuestring, "reboot") == 0) {
+                    esp_restart();
+                } else if (strcmp(command->valuestring, "lazy_reboot") == 0) {
+                    if (udp_ != nullptr) {
+                        esp_restart();
+                    }
+                    reboot_after_goodbye_ = true;
+                } else {
+                    ESP_LOGW(TAG, "Unknown system command: %s", command->valuestring);
+                }
+            }
         } else if (on_incoming_json_ != nullptr) {
             on_incoming_json_(root);
         }
         cJSON_Delete(root);
         last_incoming_time_ = std::chrono::steady_clock::now();
     });
-
+    endpoint = "39.108.165.47:8802";
     ESP_LOGI(TAG, "Connecting to endpoint %s", endpoint.c_str());
     std::string broker_address;
     int broker_port = 8883;
@@ -247,7 +266,8 @@ bool MqttProtocol::OpenAudioChannel() {
         remote_sequence_ = sequence;
         last_incoming_time_ = std::chrono::steady_clock::now();
     });
-
+    udp_server_ = "39.108.165.47";
+    udp_port_ = 8894;
     udp_->Connect(udp_server_, udp_port_);
 
     if (on_audio_channel_opened_ != nullptr) {

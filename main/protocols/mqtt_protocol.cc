@@ -62,6 +62,7 @@ bool MqttProtocol::StartMqttClient(bool report_error) {
 
     mqtt_->OnMessage([this](const std::string& topic, const std::string& payload) {
         cJSON* root = cJSON_Parse(payload.c_str());
+        ESP_LOGI(TAG, "mqtt<< %s", payload.c_str()); // 协议日志
         if (root == nullptr) {
             ESP_LOGE(TAG, "Failed to parse json message %s", payload.c_str());
             return;
@@ -111,6 +112,7 @@ bool MqttProtocol::StartMqttClient(bool report_error) {
 }
 
 bool MqttProtocol::SendText(const std::string& text) {
+    ESP_LOGI(TAG, "mqtt:%s>>%s", publish_topic_.c_str(), text.c_str());
     if (publish_topic_.empty()) {
         return false;
     }
@@ -144,7 +146,8 @@ bool MqttProtocol::SendAudio(const AudioStreamPacket& packet) {
         ESP_LOGE(TAG, "Failed to encrypt audio data");
         return false;
     }
-
+    // 打印nonce数组
+    ESP_LOGI(TAG, "udp>>..");
     return udp_->Send(encrypted) > 0;
 }
 
@@ -204,6 +207,7 @@ bool MqttProtocol::OpenAudioChannel() {
          * |type 1u|flags 1u|payload_len 2u|ssrc 4u|timestamp 4u|sequence 4u|
          * |payload payload_len|
          */
+
         if (data.size() < sizeof(aes_nonce_)) {
             ESP_LOGE(TAG, "Invalid audio packet size: %u", data.size());
             return;

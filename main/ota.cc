@@ -103,6 +103,8 @@ bool Ota::CheckVersion() {
     }
 
     data = http->ReadAll();
+    // esplog this data
+    ESP_LOGI(TAG, "Received OTA info: %s", data.c_str());
     http->Close();
 
     // Response: { "firmware": { "version": "1.0.0", "url": "http://" } }

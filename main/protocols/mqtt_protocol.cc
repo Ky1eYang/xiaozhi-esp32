@@ -55,6 +55,7 @@ bool MqttProtocol::StartMqttClient(bool report_error) {
 
     mqtt_->OnMessage([this](const std::string& topic, const std::string& payload) {
         cJSON* root = cJSON_Parse(payload.c_str());
+        ESP_LOGI(TAG, "mqtt<< %s", payload.c_str()); // 协议日志
         if (root == nullptr) {
             ESP_LOGE(TAG, "Failed to parse json message %s", payload.c_str());
             return;
@@ -76,13 +77,31 @@ bool MqttProtocol::StartMqttClient(bool report_error) {
                     CloseAudioChannel();
                 });
             }
+            if (reboot_after_goodbye_) {
+                ESP_LOGI(TAG, "Rebooting after goodbye");
+                esp_restart();
+            }
+        } else if (strcmp(type->valuestring, "system") == 0) {
+            auto command = cJSON_GetObjectItem(root, "command");
+            if (cJSON_IsString(command)) {
+                ESP_LOGI(TAG, "System command: %s", command->valuestring);
+                if (strcmp(command->valuestring, "reboot") == 0) {
+                    esp_restart();
+                } else if (strcmp(command->valuestring, "lazy_reboot") == 0) {
+                    if (udp_ == nullptr) {
+                        esp_restart();
+                    }
+                    reboot_after_goodbye_ = true;
+                } else {
+                    ESP_LOGW(TAG, "Unknown system command: %s", command->valuestring);
+                }
+            }
         } else if (on_incoming_json_ != nullptr) {
             on_incoming_json_(root);
         }
         cJSON_Delete(root);
         last_incoming_time_ = std::chrono::steady_clock::now();
     });
-
     ESP_LOGI(TAG, "Connecting to endpoint %s", endpoint.c_str());
     std::string broker_address;
     int broker_port = 8883;
@@ -104,6 +123,7 @@ bool MqttProtocol::StartMqttClient(bool report_error) {
 }
 
 bool MqttProtocol::SendText(const std::string& text) {
+    ESP_LOGI(TAG, "mqtt:%s>>%s", publish_topic_.c_str(), text.c_str());
     if (publish_topic_.empty()) {
         return false;
     }
@@ -137,7 +157,8 @@ bool MqttProtocol::SendAudio(std::unique_ptr<AudioStreamPacket> packet) {
         ESP_LOGE(TAG, "Failed to encrypt audio data");
         return false;
     }
-
+    // 打印nonce数组
+    ESP_LOGI(TAG, "udp>>..");
     return udp_->Send(encrypted) > 0;
 }
 
@@ -192,6 +213,7 @@ bool MqttProtocol::OpenAudioChannel() {
          * |type 1u|flags 1u|payload_len 2u|ssrc 4u|timestamp 4u|sequence 4u|
          * |payload payload_len|
          */
+
         if (data.size() < sizeof(aes_nonce_)) {
             ESP_LOGE(TAG, "Invalid audio packet size: %u", data.size());
             return;
@@ -231,7 +253,6 @@ bool MqttProtocol::OpenAudioChannel() {
         remote_sequence_ = sequence;
         last_incoming_time_ = std::chrono::steady_clock::now();
     });
-
     udp_->Connect(udp_server_, udp_port_);
 
     if (on_audio_channel_opened_ != nullptr) {

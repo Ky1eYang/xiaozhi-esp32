@@ -1,6 +1,8 @@
-# An MCP-based Chatbot | 一个基于 MCP 的聊天机器人
-
+# 小智 AI 聊天机器人 （XiaoZhi AI Chatbot）
 （中文 | [English](README_en.md) | [日本語](README_ja.md)）
+
+## DeepWiki [方便理解]
+[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/Ky1eYang/xiaozhi-esp32)
 
 ## 视频
 

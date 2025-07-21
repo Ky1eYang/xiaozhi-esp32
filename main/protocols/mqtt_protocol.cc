@@ -77,22 +77,14 @@ bool MqttProtocol::StartMqttClient(bool report_error) {
                     CloseAudioChannel();
                 });
             }
-            if (reboot_after_goodbye_) {
-                ESP_LOGI(TAG, "Rebooting after goodbye");
-                esp_restart();
-            }
         } else if (strcmp(type->valuestring, "system") == 0) {
             auto command = cJSON_GetObjectItem(root, "command");
             if (cJSON_IsString(command)) {
                 ESP_LOGI(TAG, "System command: %s", command->valuestring);
                 if (strcmp(command->valuestring, "reboot") == 0) {
                     esp_restart();
-                } else if (strcmp(command->valuestring, "lazy_reboot") == 0) {
-                    if (udp_ == nullptr) {
-                        esp_restart();
-                    }
-                    reboot_after_goodbye_ = true;
-                } else {
+                }
+                else {
                     ESP_LOGW(TAG, "Unknown system command: %s", command->valuestring);
                 }
             }

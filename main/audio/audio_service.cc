@@ -97,34 +97,42 @@ void AudioService::Start() {
 
     esp_timer_start_periodic(audio_power_timer_, 1000000);
 
-    /* Start the audio input task */
 #if CONFIG_USE_AUDIO_PROCESSOR
+    /* Start the audio input task */
     xTaskCreatePinnedToCore([](void* arg) {
         AudioService* audio_service = (AudioService*)arg;
         audio_service->AudioInputTask();
         vTaskDelete(NULL);
     }, "audio_input", 2048 * 3, this, 8, &audio_input_task_handle_, 1);
-#else
-    xTaskCreate([](void* arg) {
-        AudioService* audio_service = (AudioService*)arg;
-        audio_service->AudioInputTask();
-        vTaskDelete(NULL);
-    }, "audio_input", 2048 * 3, this, 8, &audio_input_task_handle_);
-#endif
 
     /* Start the audio output task */
     xTaskCreate([](void* arg) {
         AudioService* audio_service = (AudioService*)arg;
         audio_service->AudioOutputTask();
         vTaskDelete(NULL);
-    }, "audio_output", 4096, this, 3, &audio_output_task_handle_);
+    }, "audio_output", 2048 * 2, this, 3, &audio_output_task_handle_);
+#else
+    /* Start the audio input task */
+    xTaskCreate([](void* arg) {
+        AudioService* audio_service = (AudioService*)arg;
+        audio_service->AudioInputTask();
+        vTaskDelete(NULL);
+    }, "audio_input", 2048 * 2, this, 8, &audio_input_task_handle_);
+
+    /* Start the audio output task */
+    xTaskCreate([](void* arg) {
+        AudioService* audio_service = (AudioService*)arg;
+        audio_service->AudioOutputTask();
+        vTaskDelete(NULL);
+    }, "audio_output", 2048, this, 3, &audio_output_task_handle_);
+#endif
 
     /* Start the opus codec task */
     xTaskCreate([](void* arg) {
         AudioService* audio_service = (AudioService*)arg;
         audio_service->OpusCodecTask();
         vTaskDelete(NULL);
-    }, "opus_codec", 4096 * 7, this, 2, &opus_codec_task_handle_);
+    }, "opus_codec", 2048 * 13, this, 2, &opus_codec_task_handle_);
 }
 
 void AudioService::Stop() {
@@ -144,12 +152,13 @@ void AudioService::Stop() {
 
 bool AudioService::ReadAudioData(std::vector<int16_t>& data, int sample_rate, int samples) {
     if (!codec_->input_enabled()) {
-        codec_->EnableInput(true);
+        esp_timer_stop(audio_power_timer_);
         esp_timer_start_periodic(audio_power_timer_, AUDIO_POWER_CHECK_INTERVAL_MS * 1000);
+        codec_->EnableInput(true);
     }
 
     if (codec_->input_sample_rate() != sample_rate) {
-        data.resize(samples * codec_->input_sample_rate() / sample_rate);
+        data.resize(samples * codec_->input_sample_rate() / sample_rate * codec_->input_channels());
         if (!codec_->InputData(data)) {
             return false;
         }
@@ -175,7 +184,7 @@ bool AudioService::ReadAudioData(std::vector<int16_t>& data, int sample_rate, in
             data = std::move(resampled);
         }
     } else {
-        data.resize(samples);
+        data.resize(samples * codec_->input_channels());
         if (!codec_->InputData(data)) {
             return false;
         }
@@ -279,8 +288,9 @@ void AudioService::AudioOutputTask() {
         lock.unlock();
 
         if (!codec_->output_enabled()) {
-            codec_->EnableOutput(true);
+            esp_timer_stop(audio_power_timer_);
             esp_timer_start_periodic(audio_power_timer_, AUDIO_POWER_CHECK_INTERVAL_MS * 1000);
+            codec_->EnableOutput(true);
         }
         codec_->OutputData(task->pcm);
 
@@ -468,7 +478,10 @@ void AudioService::EnableWakeWordDetection(bool enable) {
     ESP_LOGD(TAG, "%s wake word detection", enable ? "Enabling" : "Disabling");
     if (enable) {
         if (!wake_word_initialized_) {
-            wake_word_->Initialize(codec_);
+            if (!wake_word_->Initialize(codec_)) {
+                ESP_LOGE(TAG, "Failed to initialize wake word");
+                return;
+            }
             wake_word_initialized_ = true;
         }
         wake_word_->Start();
@@ -513,6 +526,11 @@ void AudioService::EnableAudioTesting(bool enable) {
 
 void AudioService::EnableDeviceAec(bool enable) {
     ESP_LOGI(TAG, "%s device AEC", enable ? "Enabling" : "Disabling");
+    if (!audio_processor_initialized_) {
+        audio_processor_->Initialize(codec_, OPUS_FRAME_DURATION_MS);
+        audio_processor_initialized_ = true;
+    }
+
     audio_processor_->EnableDeviceAec(enable);
 }
 

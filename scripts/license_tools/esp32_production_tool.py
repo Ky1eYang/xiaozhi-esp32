@@ -283,9 +283,9 @@ class DeviceManager:
                 return None
                 
             try:
-                data = response.json()
-                if data.get('success') != True:
-                    self.log(f"获取授权信息失败: {data.get('message', '未知错误')}")
+                data:dict = response.json()
+                if not data.get('success', False):
+                    self.log(f"获取授权信息失败: {response.content}")
                     return None
                     
                 return data.get('data')
@@ -478,57 +478,78 @@ class DeviceManager:
                 return False
                 
             # 烧录授权密钥
-            cmd = [
-                "espefuse.py",
-                "--port", self.device_path,
-                "--do-not-confirm",
-                "burn_key",
-                "BLOCK_KEY0",
-                key_file,
-                "HMAC_UP"
-            ]
-            if sys.platform.startswith("win"):
-                cmd = [
-                    "espefuse",
-                    "--port", self.device_path,
-                    "--do-not-confirm",
-                    "burn-key",
-                    "BLOCK_KEY0",
-                    key_file,
-                    "HMAC_UP"
-                ]
-
+            # cmd = [
+            #     "espefuse.py",
+            #     "--port", self.device_path,
+            #     "--do-not-confirm",
+            #     "burn_key",
+            #     "BLOCK_KEY0",
+            #     key_file,
+            #     "HMAC_UP"
+            # ]
+            # if sys.platform.startswith("win"):
+            #     cmd = [
+            #         "espefuse",
+            #         "--port", self.device_path,
+            #         "--do-not-confirm",
+            #         "burn-key",
+            #         "BLOCK_KEY0",
+            #         key_file,
+            #         "HMAC_UP"
+            #     ]
+            # self.log(f"执行命令: {' '.join(cmd)}")
             
-            self.log("正在烧录授权密钥...")
-            self.log(f"执行命令: {' '.join(cmd)}")
+            # self.current_process = subprocess.Popen(
+            #     cmd,
+            #     stdout=subprocess.PIPE,
+            #     stderr=subprocess.STDOUT,
+            #     text=True,
+            #     universal_newlines=True
+            # )
+            # while True:
+            #     output = self.current_process.stdout.readline()
+            #     if output == '' and self.current_process.poll() is not None:
+            #         break
+            #     if output:
+            #         self.log(output.strip())
+            # self.current_process = None
+            # return_code = self.current_process.poll()
+            # if return_code != 0:
+            #     self.log(f"烧录授权密钥失败，退出码: {return_code}")
+            #     return False
             
-            self.current_process = subprocess.Popen(
-                cmd,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT,
-                text=True,
-                universal_newlines=True
+            # 该版本线上授权不使用HMAC_UP
+            self.log("正在授权设备...")
+            resp = requests.post(
+                "https://xiaozhi.me/api/agents/devices/activate",
+                json={
+                    "serial_number": license_data["serial_number"],
+                    "license_key": license_data["license_key"],
+                },
+                headers={
+                    "Authorization": f"Bearer {self.secret_key}",
+                    "Content-Type": "application/json",
+                },
             )
-            
-            while True:
-                output = self.current_process.stdout.readline()
-                if output == '' and self.current_process.poll() is not None:
-                    break
-                if output:
-                    self.log(output.strip())
-                    
-            return_code = self.current_process.poll()
-            self.current_process = None
-            
-            if return_code != 0:
-                self.log(f"烧录授权密钥失败，退出码: {return_code}")
+            if resp.status_code != 200:
+                self.log(f"设备授权失败: HTTP {resp.status_code}")
                 return False
+            
+            try:
+                resp_data: dict = resp.json()
+                if not resp_data.get("success", False):
+                    self.log(f"设备授权失败: 返回内容{resp.content}")
+                    return False
+            except Exception as e:
+                self.log(f"解析授权响应失败: {str(e)}")
+                return False
+            
                 
             # 清理临时文件
             try:
                 os.remove(serial_file)
                 os.remove(key_file)
-            except:
+            except Exception as _e:
                 pass
                 
             self.log("授权信息烧录成功")
@@ -615,7 +636,7 @@ class ESP32ProductionTool:
                     try:
                         device.current_process.terminate()
                         device.current_process.wait(timeout=1)
-                    except:
+                    except Exception as _e:
                         pass
                     device.current_process = None
                     device.is_flashing = False
@@ -908,7 +929,7 @@ class ESP32ProductionTool:
                 _log_in_main_thread()
             else:
                 self.root.after(0, _log_in_main_thread)
-        except:
+        except Exception as _e:
             # 备用方案，总是调度到主线程
             self.root.after(0, _log_in_main_thread)
         
@@ -985,7 +1006,7 @@ class ESP32ProductionTool:
                         try:
                             device.current_process.terminate()
                             device.current_process.wait(timeout=1)
-                        except:
+                        except Exception as _e:
                             pass
                         device.current_process = None
                         device.is_flashing = False
@@ -1388,7 +1409,7 @@ class ESP32ProductionTool:
         ttk.Button(preset_frame, text="1×16", command=lambda: set_preset(1, 16)).pack(side=tk.LEFT, padx=5)
         
         # 自定义license流程
-        custom_key_frame = ttk.LabelFrame(main_frame, text="Authorization", padding="10")
+        custom_key_frame = ttk.LabelFrame(main_frame, text="Authorization码", padding="10")
         custom_key_frame.pack(fill=tk.X, pady=(0, 15))
         auth_entry = ttk.Entry(custom_key_frame, textvariable=token_var, width=70)
         auth_entry.pack(fill=tk.X)
@@ -1451,7 +1472,7 @@ class ESP32ProductionTool:
         ttk.Button(button_frame, text="取消", command=cancel_and_close).pack(side=tk.RIGHT)
         
         # 设置焦点到授权链接输入框
-        license_entry.focus_set()
+        auth_entry.focus_set()
         
         # 等待对话框关闭
         dialog.wait_window()
@@ -1485,13 +1506,13 @@ def main():
         try:
             if app:
                 app.cleanup()
-        except:
+        except Exception as _e:
             pass
         # 确保窗口被正确关闭
         try:
             if root.winfo_exists():
                 root.destroy()
-        except:
+        except Exception as _e:
             pass
 
 if __name__ == "__main__":

@@ -35,6 +35,8 @@ class DeviceManager:
         self.parent: "ESP32ProductionTool" = parent
         self.device_path = None
         self.mac_address = None
+        # 初始化后, 由配置获取并注入的密钥，用于后续授权流程（默认空）
+        self.secret_key = ""
         self.status = "未连接"
         self.is_flashing = False
         self.frame = None
@@ -537,13 +539,16 @@ class DeviceManager:
             return False
 
 class ESP32ProductionTool:
-    def __init__(self, root):
+    def __init__(self, root: tk.Tk):
         self.root = root
         self.root.title("小智AI商用授权 - ESP32生产工具")
         self.root.geometry("1600x900")
         
         # 创建变量
         self.license_url = tk.StringVar()
+        self.token = tk.StringVar()
+        # 从后端换取的 secret_key
+        self.secret_key = ""
         self.auto_refresh_enabled = True  # 自动刷新标志
         self.auto_refresh_job = None  # 存储自动刷新定时器
         self.auto_flash_enabled = True  # 自动烧录标志，默认启用
@@ -646,8 +651,9 @@ class ESP32ProductionTool:
         try:
             if os.path.exists(self.config_file):
                 with open(self.config_file, 'r', encoding='utf-8') as f:
-                    config = json.load(f)
+                    config:Dict = json.load(f)
                     license_url = config.get('license_url', '')
+                    token = config.get('token', '')
                     
                     # 检查是否需要进入配置模式
                     if not license_url:
@@ -657,6 +663,7 @@ class ESP32ProductionTool:
                             return False
                     else:
                         self.license_url.set(license_url)
+                        self.token.set(token)
                         # 加载网格布局配置
                         self.grid_rows = config.get('grid_rows', 4)
                         self.grid_cols = config.get('grid_cols', 4)
@@ -668,6 +675,12 @@ class ESP32ProductionTool:
                     # 用户取消配置，退出程序
                     self.root.destroy()
                     return False
+            # 无论来源于现有文件还是新对话框保存，尝试根据token换取secret_key（简单直抛异常）
+            token_val = (self.token.get() or '').strip()
+            if token_val:
+                self.secret_key = self._fetch_secret_key(token_val)
+            else:
+                print("未配置token，跳过secret_key获取")
         except Exception as e:
             print(f"加载配置文件失败: {e}")
             # 配置文件损坏，进入配置模式
@@ -675,6 +688,26 @@ class ESP32ProductionTool:
                 self.root.destroy()
                 return False
         return True
+
+    def _fetch_secret_key(self, token: str) -> str:
+        """使用token从后端换取secret_key，失败抛出异常。"""
+        url = "https://xiaozhi.me/api/developers/token"
+        resp = requests.post(url, headers={"Authorization": token}, timeout=15)
+        # 非200直接抛异常
+        resp.raise_for_status()
+        body = resp.json()
+        if not isinstance(body, dict):
+            raise ValueError("响应体非JSON对象")
+        data = body
+        # 兼容两种结构
+        if 'secret_key' in body:
+            sk = body.get('secret_key')
+        else:
+            data = body.get('data') or {}
+            sk = data.get('secret_key')
+        if not isinstance(sk, str) or not sk:
+            raise ValueError("响应未包含有效的secret_key")
+        return sk
             
     def save_config(self):
         """保存配置文件"""
@@ -790,6 +823,8 @@ class ESP32ProductionTool:
             j = idx % self.grid_cols
             
             device = DeviceManager(idx, self, exact_name=port_name)
+            # 注入从配置换取的secret_key
+            device.secret_key = self.secret_key
             self.devices[port_name] = device  # 使用串口名作为key
             
             # 创建固定大小的端口框架
@@ -911,7 +946,7 @@ class ESP32ProductionTool:
                     self._update_existing_devices(current_ports)
                         
             except Exception as e:
-                self.root.after(0, lambda: self.log(f"刷新设备状态失败: {str(e)}"))
+                self.root.after(0, lambda e: self.log(f"刷新设备状态失败: {str(e)}"), e)
         
         # 在线程池中异步执行
         self.executor.submit(_refresh_devices_async)
@@ -1030,6 +1065,8 @@ class ESP32ProductionTool:
                 # 恢复已有设备
                 device_data = preserved_devices[port_name]
                 device = device_data['device']
+                # 更新保存设备的secret_key为最新
+                device.secret_key = self.secret_key
                 device.port_num = idx  # 更新端口编号
                 self.devices[port_name] = device
                 
@@ -1037,6 +1074,7 @@ class ESP32ProductionTool:
             else:
                 # 创建新设备（包括新增的端口）
                 device = DeviceManager(idx, self, exact_name=port_name)
+                device.secret_key = self.secret_key
                 self.devices[port_name] = device
                 self.log(f"创建新端口 {port_name} 设备")
             
@@ -1147,6 +1185,7 @@ class ESP32ProductionTool:
             j = idx % self.grid_cols
             
             device = DeviceManager(idx, self, exact_name=port_name)
+            device.secret_key = self.secret_key
             self.devices[port_name] = device
             
             # 创建固定大小的端口框架
@@ -1242,7 +1281,7 @@ class ESP32ProductionTool:
             self.executor.submit(_read_info_with_auto_flash)
             
         except Exception as e:
-            self.root.after(0, lambda: self.log(f"检查设备连接失败 {port_name}: {str(e)}"))
+            self.root.after(0, lambda e: self.log(f"检查设备连接失败 {port_name}: {str(e)}"), e)
     
     def _check_auto_flash(self, port_name):
         """检查是否需要自动烧录"""
@@ -1285,7 +1324,7 @@ class ESP32ProductionTool:
         """显示配置对话框"""
         dialog = tk.Toplevel(self.root)
         dialog.title("初始配置")
-        dialog.geometry("600x400")
+        dialog.geometry("600x480")
         dialog.resizable(False, False)
         dialog.transient(self.root)
         dialog.grab_set()
@@ -1293,11 +1332,12 @@ class ESP32ProductionTool:
         # 居中显示
         dialog.update_idletasks()
         x = (dialog.winfo_screenwidth() // 2) - (600 // 2)
-        y = (dialog.winfo_screenheight() // 2) - (400 // 2)
-        dialog.geometry(f"600x400+{x}+{y}")
+        y = (dialog.winfo_screenheight() // 2) - (480 // 2)
+        dialog.geometry(f"600x480+{x}+{y}")
         
         # 配置变量
         license_url_var = tk.StringVar()
+        token_var = tk.StringVar()
         grid_rows_var = tk.StringVar(value="4")
         grid_cols_var = tk.StringVar(value="4")
         fullscreen_var = tk.BooleanVar(value=True)
@@ -1347,6 +1387,12 @@ class ESP32ProductionTool:
         ttk.Button(preset_frame, text="2×8", command=lambda: set_preset(2, 8)).pack(side=tk.LEFT, padx=5)
         ttk.Button(preset_frame, text="1×16", command=lambda: set_preset(1, 16)).pack(side=tk.LEFT, padx=5)
         
+        # 自定义license流程
+        custom_key_frame = ttk.LabelFrame(main_frame, text="Authorization", padding="10")
+        custom_key_frame.pack(fill=tk.X, pady=(0, 15))
+        auth_entry = ttk.Entry(custom_key_frame, textvariable=token_var, width=70)
+        auth_entry.pack(fill=tk.X)
+        
         # 全屏配置
         fullscreen_check = ttk.Checkbutton(main_frame, text="启动时全屏显示", variable=fullscreen_var)
         fullscreen_check.pack(anchor=tk.W, pady=(0, 20))
@@ -1359,6 +1405,7 @@ class ESP32ProductionTool:
         
         def save_and_close():
             license_url = license_url_var.get().strip()
+            token = token_var.get().strip()
             if not license_url:
                 messagebox.showerror("错误", "请输入授权链接")
                 return
@@ -1375,6 +1422,7 @@ class ESP32ProductionTool:
             
             # 保存配置
             self.license_url.set(license_url)
+            self.token.set(token)
             self.grid_rows = rows
             self.grid_cols = cols
             self.fullscreen_on_startup = fullscreen_var.get()
@@ -1384,7 +1432,8 @@ class ESP32ProductionTool:
                 'license_url': license_url,
                 'grid_rows': rows,
                 'grid_cols': cols,
-                'fullscreen_on_startup': fullscreen_var.get()
+                'fullscreen_on_startup': fullscreen_var.get(),
+                'token': token
             }
             
             try:

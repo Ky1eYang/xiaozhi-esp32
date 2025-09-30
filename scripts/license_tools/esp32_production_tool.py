@@ -36,7 +36,7 @@ class DeviceManager:
         self.device_path = None
         self.mac_address = None
         # 初始化后, 由配置获取并注入的密钥，用于后续授权流程（默认空）
-        self.secret_key = ""
+        self.token_ol = ""
         self.status = "未连接"
         self.is_flashing = False
         self.frame = None
@@ -524,13 +524,16 @@ class DeviceManager:
                 "https://xiaozhi.me/api/agents/devices/activate",
                 json={
                     "serial_number": license_data["serial_number"],
-                    "license_key": license_data["license_key"],
+                    "mac_address": self.mac_address,
                 },
                 headers={
-                    "Authorization": f"Bearer {self.secret_key}",
+                    "Authorization": f"Bearer {self.token_ol}",
                     "Content-Type": "application/json",
                 },
             )
+            print(resp.request.headers, resp.request.body)
+            print(resp.status_code, resp.content)
+            
             if resp.status_code != 200:
                 self.log(f"设备授权失败: HTTP {resp.status_code}")
                 return False
@@ -569,7 +572,7 @@ class ESP32ProductionTool:
         self.license_url = tk.StringVar()
         self.token = tk.StringVar()
         # 从后端换取的 secret_key
-        self.secret_key = ""
+        self.token_online = ""
         self.auto_refresh_enabled = True  # 自动刷新标志
         self.auto_refresh_job = None  # 存储自动刷新定时器
         self.auto_flash_enabled = True  # 自动烧录标志，默认启用
@@ -699,9 +702,9 @@ class ESP32ProductionTool:
             # 无论来源于现有文件还是新对话框保存，尝试根据token换取secret_key（简单直抛异常）
             token_val = (self.token.get() or '').strip()
             if token_val:
-                self.secret_key = self._fetch_secret_key(token_val)
+                self.token_online = self._fetch_token(token_val)
             else:
-                print("未配置token，跳过secret_key获取")
+                print("未配置sk，跳过token获取")
         except Exception as e:
             print(f"加载配置文件失败: {e}")
             # 配置文件损坏，进入配置模式
@@ -710,25 +713,20 @@ class ESP32ProductionTool:
                 return False
         return True
 
-    def _fetch_secret_key(self, token: str) -> str:
+    def _fetch_token(self, secret_key: str) -> str:
         """使用token从后端换取secret_key，失败抛出异常。"""
         url = "https://xiaozhi.me/api/developers/token"
-        resp = requests.post(url, headers={"Authorization": token}, timeout=15)
+        resp = requests.post(url, headers={"Content-Type": "application/json"}, json={"secret_key": secret_key}, timeout=15)
         # 非200直接抛异常
         resp.raise_for_status()
-        body = resp.json()
-        if not isinstance(body, dict):
+        data = resp.json()
+        if not isinstance(data, dict):
             raise ValueError("响应体非JSON对象")
-        data = body
-        # 兼容两种结构
-        if 'secret_key' in body:
-            sk = body.get('secret_key')
-        else:
-            data = body.get('data') or {}
-            sk = data.get('secret_key')
-        if not isinstance(sk, str) or not sk:
-            raise ValueError("响应未包含有效的secret_key")
-        return sk
+        data = data.get('data') or {}
+        token = data.get('token')
+        if not isinstance(token, str) or not token:
+            raise ValueError("响应未包含有效的token")
+        return token
             
     def save_config(self):
         """保存配置文件"""
@@ -844,8 +842,8 @@ class ESP32ProductionTool:
             j = idx % self.grid_cols
             
             device = DeviceManager(idx, self, exact_name=port_name)
-            # 注入从配置换取的secret_key
-            device.secret_key = self.secret_key
+            # 注入从配置换取的token
+            device.token_ol = self.token_online
             self.devices[port_name] = device  # 使用串口名作为key
             
             # 创建固定大小的端口框架
@@ -1087,7 +1085,7 @@ class ESP32ProductionTool:
                 device_data = preserved_devices[port_name]
                 device = device_data['device']
                 # 更新保存设备的secret_key为最新
-                device.secret_key = self.secret_key
+                device.secret_key = self.token_online
                 device.port_num = idx  # 更新端口编号
                 self.devices[port_name] = device
                 
@@ -1095,7 +1093,7 @@ class ESP32ProductionTool:
             else:
                 # 创建新设备（包括新增的端口）
                 device = DeviceManager(idx, self, exact_name=port_name)
-                device.secret_key = self.secret_key
+                device.token_ol = self.token_online
                 self.devices[port_name] = device
                 self.log(f"创建新端口 {port_name} 设备")
             
@@ -1206,7 +1204,7 @@ class ESP32ProductionTool:
             j = idx % self.grid_cols
             
             device = DeviceManager(idx, self, exact_name=port_name)
-            device.secret_key = self.secret_key
+            device.token_ol = self.token_online
             self.devices[port_name] = device
             
             # 创建固定大小的端口框架
@@ -1409,7 +1407,7 @@ class ESP32ProductionTool:
         ttk.Button(preset_frame, text="1×16", command=lambda: set_preset(1, 16)).pack(side=tk.LEFT, padx=5)
         
         # 自定义license流程
-        custom_key_frame = ttk.LabelFrame(main_frame, text="Authorization码", padding="10")
+        custom_key_frame = ttk.LabelFrame(main_frame, text="Secret Key", padding="10")
         custom_key_frame.pack(fill=tk.X, pady=(0, 15))
         auth_entry = ttk.Entry(custom_key_frame, textvariable=token_var, width=70)
         auth_entry.pack(fill=tk.X)

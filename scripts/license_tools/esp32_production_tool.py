@@ -201,11 +201,11 @@ class DeviceManager:
                 # 烧录设备
                 try:
                     # 烧录固件
-                    self.log("开始烧录固件...")
-                    if not self._flash_firmware_sync(firmware_path):
-                        self.parent.root.after(0, lambda: self.update_status("失败"))
-                        self.log("烧录固件失败")
-                        return
+                    # self.log("开始烧录固件...")
+                    # if not self._flash_firmware_sync(firmware_path):
+                    #     self.parent.root.after(0, lambda: self.update_status("失败"))
+                    #     self.log("烧录固件失败")
+                    #     return
                         
                     # 烧录序列号和授权密钥
                     self.log("开始烧录授权信息...")

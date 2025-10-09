@@ -185,18 +185,18 @@ class DeviceManager:
                     self.log("获取授权信息失败")
                     return
                     
-                # 下载固件
-                if not license_data.get('firmware'):
-                    self.log("固件信息不存在，请在后台配置最新版固件")
-                    self.parent.root.after(0, lambda: self.update_status("失败"))
-                    return
+                # # 下载固件
+                # if not license_data.get('firmware'):
+                #     self.log("固件信息不存在，请在后台配置最新版固件")
+                #     self.parent.root.after(0, lambda: self.update_status("失败"))
+                #     return
                 
-                self.log("正在下载固件...")
-                firmware_path = self._download_firmware_sync(license_data['firmware']['image_url'])
-                if not firmware_path:
-                    self.parent.root.after(0, lambda: self.update_status("失败"))
-                    self.log("下载固件失败")
-                    return
+                # self.log("正在下载固件...")
+                # firmware_path = self._download_firmware_sync(license_data['firmware']['image_url'])
+                # if not firmware_path:
+                #     self.parent.root.after(0, lambda: self.update_status("失败"))
+                #     self.log("下载固件失败")
+                #     return
                     
                 # 烧录设备
                 try:

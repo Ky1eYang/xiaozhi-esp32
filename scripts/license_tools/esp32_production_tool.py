@@ -536,17 +536,8 @@ class DeviceManager:
             
             if resp.status_code != 200:
                 self.log(f"设备授权失败: HTTP {resp.status_code}")
+                self.log(f"设备授权失败: 返回内容{resp.content}")
                 return False
-            
-            try:
-                resp_data: dict = resp.json()
-                if not resp_data.get("success", False):
-                    self.log(f"设备授权失败: 返回内容{resp.content}")
-                    return False
-            except Exception as e:
-                self.log(f"解析授权响应失败: {str(e)}")
-                return False
-            
                 
             # 清理临时文件
             try:
